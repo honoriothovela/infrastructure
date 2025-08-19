@@ -67,4 +67,6 @@ jobs:
 
       # 9️⃣ Rodar playbook Ansible para instalar K3s
       - name: Rodar playbook K3s
-        run: ansible-playbook -i ansible/hosts.ini ansible/install_k3s.yml
+        run: |
+          cd ansible
+          ansible-playbook -i hosts.ini install_k3s.yml
