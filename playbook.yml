@@ -3,7 +3,7 @@
   hosts: all
   become: yes
   vars:
-    ansible_user: "ubuntu" # Altere para o usuário correto, se for diferente
+    ansible_user: "ubuntu"
   tasks:
     - name: Esperar que a instância esteja pronta
       ansible.builtin.wait_for_connection:

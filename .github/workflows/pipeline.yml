@@ -37,8 +37,6 @@ jobs:
         run: |
           cd terraform
           terraform plan -out=tfplan
-        env:
-          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
 
       - name: Terraform Apply
         id: apply
@@ -50,7 +48,7 @@ jobs:
         id: get_ip
         run: |
           cd terraform
-          # Pega o valor do output 'ec2_public_ip' definido no seu arquivo main.tf
+          # Pega o valor do output 'ec2_public_ip' do seu main.tf
           INSTANCE_IP=$(terraform output -raw ec2_public_ip)
           echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
@@ -58,14 +56,12 @@ jobs:
         run: |
           echo "[k3s_node]" > ansible_hosts
           echo "${{ steps.get_ip.outputs.instance_ip }} ansible_user=ubuntu" >> ansible_hosts
-          # Altere 'ubuntu' para 'ec2-user' se sua AMI for Amazon Linux
 
       - name: Executar playbook do Ansible
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ steps.get_ip.outputs.instance_ip }}
-          username: ubuntu # Altere para 'ec2-user' se necessário
+          username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Este comando assume que o 'playbook.yml' está na raiz do seu repositório
-            ansible-playbook -i ansible_hosts playbook.yml --private-key=${{ secrets.SSH_PRIVATE_KEY }}
+            ansible-playbook -i ansible_hosts playbook.yml
