@@ -108,15 +108,25 @@ jobs:
           echo "📋 Conteúdo do inventário:"
           cat ansible_hosts
 
-      - name: Executar playbook Ansible
+      - name: Executar playbook Ansible (COM INSTALAÇÃO DO ANSIBLE)
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ steps.get_ip.outputs.instance_ip }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # INSTALAR ANSIBLE NA INSTÂNCIA EC2
             sudo apt-get update
-            sudo apt-get install -y python3
+            sudo apt-get install -y software-properties-common
+            sudo apt-add-repository --yes --update ppa:ansible/ansible
+            sudo apt-get install -y ansible
+            
+            # Verificar se o Ansible foi instalado corretamente
+            echo "📦 Versão do Ansible instalada:"
+            ansible --version
+            
+            # Executar o playbook
+            echo "🚀 Executando playbook..."
             ansible-playbook -i /github/workspace/ansible_hosts /github/workspace/playbook.yml
 
       - name: Limpeza final
