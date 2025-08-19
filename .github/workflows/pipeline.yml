@@ -1,49 +1,71 @@
-name: Deploy Infra and Configure
+name: Terraform e Ansible CI/CD
 
 on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
-  terraform:
+  terraform_ansible_k3s:
     runs-on: ubuntu-latest
-    outputs:
-      ec2_ip: ${{ steps.tf-output.outputs.ec2_ip }}
+
     steps:
-      - name: Checkout código
+      - name: Checkout do repositório
         uses: actions/checkout@v3
 
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: 1.6.6
+          terraform_version: 1.6.0
 
-      - name: Init Terraform
-        run: terraform init
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-north-1
 
-      - name: Apply Terraform
-        run: terraform apply -auto-approve
-
-      - name: Pegar IP da EC2
-        id: tf-output
+      - name: Terraform Init
+        id: init
         run: |
-          echo "ec2_ip=$(terraform output -raw ec2_public_ip)" >> $GITHUB_OUTPUT
+          cd terraform
+          terraform init
 
-  ansible:
-    needs: terraform
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout código
-        uses: actions/checkout@v3
-
-      - name: Instalar Ansible
-        run: sudo apt-get update && sudo apt-get install -y ansible
-
-      - name: Criar inventory dinâmico
+      - name: Terraform Plan
+        id: plan
         run: |
-          echo "[ec2]" > inventory.ini
-          echo "${{ needs.terraform.outputs.ec2_ip }}" >> inventory.ini
+          cd terraform
+          terraform plan -out=tfplan
+        env:
+          TF_VAR_ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
 
-      - name: Rodar Ansible Playbook
-        run: ansible-playbook -i inventory.ini playbook.yml --user ubuntu --private-key ~/.ssh/id_rsa
+      - name: Terraform Apply
+        id: apply
+        run: |
+          cd terraform
+          terraform apply -auto-approve tfplan
+
+      - name: Obter IP da instância
+        id: get_ip
+        run: |
+          cd terraform
+          # Pega o valor do output 'ec2_public_ip' definido no seu arquivo main.tf
+          INSTANCE_IP=$(terraform output -raw ec2_public_ip)
+          echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+
+      - name: Criar inventário do Ansible
+        run: |
+          echo "[k3s_node]" > ansible_hosts
+          echo "${{ steps.get_ip.outputs.instance_ip }} ansible_user=ubuntu" >> ansible_hosts
+          # Altere 'ubuntu' para 'ec2-user' se sua AMI for Amazon Linux
+
+      - name: Executar playbook do Ansible
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ steps.get_ip.outputs.instance_ip }}
+          username: ubuntu # Altere para 'ec2-user' se necessário
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # Este comando assume que o 'playbook.yml' está na raiz do seu repositório
+            ansible-playbook -i ansible_hosts playbook.yml --private-key=${{ secrets.SSH_PRIVATE_KEY }}
