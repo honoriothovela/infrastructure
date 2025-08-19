@@ -46,41 +46,21 @@ jobs:
           cd terraform
           terraform apply -auto-approve -input=false tfplan
 
-      - name: Obter IP da instância (FILTRAR APENAS O NÚMERO)
+      - name: Obter IP da instância
         id: get_ip
         run: |
           cd terraform
           RAW_OUTPUT=$(terraform output ec2_public_ip 2>&1)
-          echo "Output completo: $RAW_OUTPUT"
           INSTANCE_IP=$(echo "$RAW_OUTPUT" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          echo "IP filtrado: $INSTANCE_IP"
-          if [[ $INSTANCE_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "✅ IP válido: $INSTANCE_IP"
-            echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
-          else
-            echo "❌ ERRO: IP inválido - $INSTANCE_IP"
-            echo "Tentando método alternativo..."
-            INSTANCE_IP_ALT=$(echo "$RAW_OUTPUT" | tail -1 | tr -d '" ' | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
-            echo "IP alternativo: $INSTANCE_IP_ALT"
-            if [[ $INSTANCE_IP_ALT =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "instance_ip=$INSTANCE_IP_ALT" >> $GITHUB_OUTPUT
-            else
-              echo "❌ TODOS OS MÉTODOS FALHARAM"
-              exit 1
-            fi
-          fi
-
-      - name: Verificar IP capturado
-        run: |
-          echo "✅ IP capturado: ${{ steps.get_ip.outputs.instance_ip }}"
+          echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
       - name: Aguardar instância ficar disponível
         run: |
           IP="${{ steps.get_ip.outputs.instance_ip }}"
-          echo "🕐 Aguardando SSH em $IP..."
+          echo "Aguardando SSH em $IP..."
           for i in {1..30}; do
             if nc -z -w 5 $IP 22; then
-              echo "✅ SSH disponível!"
+              echo "SSH disponível!"
               break
             fi
             echo "Tentativa $i/30 - aguardando..."
@@ -100,69 +80,83 @@ jobs:
           echo "📋 Conteúdo do inventário:"
           cat ansible_hosts
 
-      - name: Criar playbook Ansible localmente
+      - name: Criar playbook Ansible
         run: |
-          cat > k3s_install.yml << 'EOF'
-          - name: Instalar k3s
-            hosts: k3s_node
-            become: yes
-            tasks:
-              - name: Atualizar sistema
-                apt:
-                  update_cache: yes
+          cat > playbook.yml << 'EOF'
+---
+- name: Instalar e configurar K3s
+  hosts: k3s_node
+  become: yes
+  gather_facts: yes
 
-              - name: Instalar dependências
-                apt:
-                  name: curl
-                  state: present
+  tasks:
+    - name: Atualizar cache de pacotes
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
 
-              - name: Instalar k3s
-                shell: |
-                  curl -sfL https://get.k3s.io | sh -
-                args:
-                  creates: /usr/local/bin/k3s
+    - name: Instalar dependências
+      apt:
+        name:
+          - curl
+          - apt-transport-https
+        state: present
 
-              - name: Verificar instalação
-                command: k3s --version
-                register: k3s_result
-                changed_when: false
+    - name: Instalar K3s
+      shell: |
+        curl -sfL https://get.k3s.io | sh -
+      args:
+        creates: /usr/local/bin/k3s
 
-              - name: Mostrar resultado
-                debug:
-                  msg: "K3s {{ k3s_result.stdout }} instalado com sucesso!"
-          EOF
+    - name: Verificar instalação do K3s
+      command: k3s --version
+      register: k3s_version
+      changed_when: false
+
+    - name: Mostrar versão do K3s
+      debug:
+        msg: "K3s instalado: {{ k3s_version.stdout }}"
+
+    - name: Verificar status do serviço K3s
+      systemd:
+        name: k3s
+        state: started
+        enabled: yes
+
+    - name: Verificar nodes do cluster
+      command: sudo k3s kubectl get nodes
+      register: k3s_nodes
+      changed_when: false
+
+    - name: Mostrar status dos nodes
+      debug:
+        msg: "Nodes do cluster: {{ k3s_nodes.stdout }}"
+EOF
+
           echo "📋 Playbook criado:"
-          cat k3s_install.yml
+          cat playbook.yml
 
-      - name: Copiar arquivos para a instância EC2
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ steps.get_ip.outputs.instance_ip }}
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "ansible_hosts,k3s_install.yml"
-          target: "/tmp/"
-          strip_components: 1
+      - name: Instalar Ansible no executor do GitHub
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y software-properties-common
+          sudo apt-add-repository --yes --update ppa:ansible/ansible
+          sudo apt-get install -y ansible
+          echo "✅ Ansible instalado no executor:"
+          ansible --version
 
-      - name: Executar playbook Ansible
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ steps.get_ip.outputs.instance_ip }}
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            sudo apt-get update
-            sudo apt-get install -y software-properties-common
-            sudo apt-add-repository --yes --update ppa:ansible/ansible
-            sudo apt-get install -y ansible
-            echo "📦 Versão do Ansible instalada:"
-            ansible --version
-            echo "📁 Arquivos no /tmp/:"
-            ls -la /tmp/
-            echo "🚀 Executando playbook..."
-            ansible-playbook -i /tmp/ansible_hosts /tmp/k3s_install.yml
+      - name: Configurar known_hosts para SSH
+        run: |
+          IP="${{ steps.get_ip.outputs.instance_ip }}"
+          ssh-keyscan -H $IP >> ~/.ssh/known_hosts
+
+      - name: Executar playbook Ansible diretamente no executor
+        run: |
+          # Executar ansible-playbook diretamente do executor do GitHub
+          ansible-playbook -i ansible_hosts playbook.yml --private-key=key.pem
+          echo "✅ Playbook executado com sucesso!"
 
       - name: Limpeza
         if: always()
         run: |
-          rm -f key.pem ansible_hosts k3s_install.yml
+          rm -f key.pem ansible_hosts playbook.yml
