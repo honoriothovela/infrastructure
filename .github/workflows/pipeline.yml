@@ -42,43 +42,28 @@ jobs:
           terraform plan -out=tfplan -input=false
 
       - name: Terraform Apply
-        id: apply
         run: |
           cd terraform
           terraform apply -auto-approve -input=false tfplan
-          echo "Apply concluído com status: $?"
 
-      - name: Verificar se a instância foi criada
-        run: |
-          cd terraform
-          echo "=== VERIFICANDO STATE ==="
-          terraform state list
-          echo "=== VERIFICANDO INSTÂNCIA ==="
-          terraform show
-
-      - name: Obter IP da instância (método simples)
+      - name: Obter IP da instância
         id: get_ip
         run: |
           cd terraform
-          # Método direto sem jq
-          INSTANCE_IP=$(terraform output ec2_public_ip | tr -d '"')
-          echo "IP bruto: $(terraform output ec2_public_ip)"
-          echo "IP processado: $INSTANCE_IP"
+          # Método mais robusto para obter o IP
+          INSTANCE_IP=$(terraform output -raw ec2_public_ip 2>/dev/null || \
+            terraform output ec2_public_ip | tail -1 | tr -d '" ' | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
           
-          if [ -z "$INSTANCE_IP" ] || [ "$INSTANCE_IP" = "null" ]; then
-            echo "ERRO: Não foi possível obter o IP"
-            echo "Tentando método alternativo..."
-            # Método alternativo
-            INSTANCE_IP=$(terraform show | grep "public_ip" | head -1 | awk '{print $3}' | tr -d '"')
-            echo "IP alternativo: $INSTANCE_IP"
-          fi
+          echo "IP obtido: '$INSTANCE_IP'"
           
-          if [ -z "$INSTANCE_IP" ] || [ "$INSTANCE_IP" = "null" ]; then
-            echo "ERRO CRÍTICO: Instância não foi criada ou não tem IP público"
+          if [[ $INSTANCE_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+          else
+            echo "ERRO: IP inválido - $INSTANCE_IP"
+            echo "Debug - output completo:"
+            terraform output ec2_public_ip
             exit 1
           fi
-          
-          echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
       - name: Debug - Verificar IP
         run: |
@@ -102,12 +87,6 @@ jobs:
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > key.pem
           chmod 600 key.pem
 
-      - name: Testar conexão SSH
-        run: |
-          IP="${{ steps.get_ip.outputs.instance_ip }}"
-          ssh-keyscan -H $IP >> ~/.ssh/known_hosts
-          ssh -i key.pem -o ConnectTimeout=10 ubuntu@$IP "echo 'Conexão SSH bem-sucedida!'" || echo "Teste SSH falhou, continuando..."
-
       - name: Criar inventário Ansible
         run: |
           IP="${{ steps.get_ip.outputs.instance_ip }}"
@@ -123,10 +102,8 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # Instalar Python3 primeiro (necessário para Ansible)
             sudo apt-get update
             sudo apt-get install -y python3
-            # Executar playbook
             ansible-playbook -i /github/workspace/ansible_hosts /github/workspace/playbook.yml
 
       - name: Limpeza
