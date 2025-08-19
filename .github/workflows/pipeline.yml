@@ -50,26 +50,18 @@ jobs:
         id: get_ip
         run: |
           cd terraform
-          # Executar comando e capturar TODO o output
           RAW_OUTPUT=$(terraform output ec2_public_ip 2>&1)
           echo "Output completo: $RAW_OUTPUT"
-          
-          # FILTRAR APENAS O IP (números e pontos)
           INSTANCE_IP=$(echo "$RAW_OUTPUT" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           echo "IP filtrado: $INSTANCE_IP"
-          
-          # Validar se é um IP válido
           if [[ $INSTANCE_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "✅ IP válido: $INSTANCE_IP"
             echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
           else
             echo "❌ ERRO: IP inválido - $INSTANCE_IP"
             echo "Tentando método alternativo..."
-            
-            # Método alternativo: usar tail e tr
             INSTANCE_IP_ALT=$(echo "$RAW_OUTPUT" | tail -1 | tr -d '" ' | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
             echo "IP alternativo: $INSTANCE_IP_ALT"
-            
             if [[ $INSTANCE_IP_ALT =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "instance_ip=$INSTANCE_IP_ALT" >> $GITHUB_OUTPUT
             else
@@ -108,38 +100,69 @@ jobs:
           echo "📋 Conteúdo do inventário:"
           cat ansible_hosts
 
-      - name: Copiar playbook para a instância
+      - name: Criar playbook Ansible localmente
+        run: |
+          cat > k3s_install.yml << 'EOF'
+          - name: Instalar k3s
+            hosts: k3s_node
+            become: yes
+            tasks:
+              - name: Atualizar sistema
+                apt:
+                  update_cache: yes
+
+              - name: Instalar dependências
+                apt:
+                  name: curl
+                  state: present
+
+              - name: Instalar k3s
+                shell: |
+                  curl -sfL https://get.k3s.io | sh -
+                args:
+                  creates: /usr/local/bin/k3s
+
+              - name: Verificar instalação
+                command: k3s --version
+                register: k3s_result
+                changed_when: false
+
+              - name: Mostrar resultado
+                debug:
+                  msg: "K3s {{ k3s_result.stdout }} instalado com sucesso!"
+          EOF
+          echo "📋 Playbook criado:"
+          cat k3s_install.yml
+
+      - name: Copiar arquivos para a instância EC2
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ steps.get_ip.outputs.instance_ip }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          source: "./ansible/k3s_install.yml"
-          target: "/tmp"
-      
-      - name: Executar playbook Ansible (COM INSTALAÇÃO DO ANSIBLE)
+          source: "ansible_hosts,k3s_install.yml"
+          target: "/tmp/"
+          strip_components: 1
+
+      - name: Executar playbook Ansible
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ steps.get_ip.outputs.instance_ip }}
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # INSTALAR ANSIBLE NA INSTÂNCIA EC2
             sudo apt-get update
             sudo apt-get install -y software-properties-common
             sudo apt-add-repository --yes --update ppa:ansible/ansible
             sudo apt-get install -y ansible
-            
-            # Verificar se o Ansible foi instalado corretamente
             echo "📦 Versão do Ansible instalada:"
             ansible --version
-            
-            # Executar o playbook
+            echo "📁 Arquivos no /tmp/:"
+            ls -la /tmp/
             echo "🚀 Executando playbook..."
-            ansible-playbook -i /github/workspace/ansible_hosts /tmp/k3s_install.yml
+            ansible-playbook -i /tmp/ansible_hosts /tmp/k3s_install.yml
 
-      - name: Limpeza final
+      - name: Limpeza
         if: always()
         run: |
-          rm -f key.pem ansible_hosts
-          echo "🧹 Limpeza concluída"
+          rm -f key.pem ansible_hosts k3s_install.yml
