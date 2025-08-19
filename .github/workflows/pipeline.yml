@@ -14,9 +14,6 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v3
 
-      - name: Instalar Ansible
-        run: sudo apt-get update && sudo apt-get install -y ansible sshpass
-
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -51,15 +48,20 @@ jobs:
         id: get_ip
         run: |
           cd terraform
-          INSTANCE_IP=$(terraform output -raw ec2_public_ip)
+          # Pega o valor do output e remove qualquer quebra de linha ou espaço em branco
+          INSTANCE_IP=$(terraform output -raw ec2_public_ip | tr -d '[:space:]')
           echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
-      - name: Criar inventário do Ansible e configurar SSH
+      - name: Criar inventário do Ansible
         run: |
           echo "[k3s_node]" > ansible_hosts
-          echo "${{ steps.get_ip.outputs.instance_ip }} ansible_user=ubuntu ansible_ssh_private_key_file=./ssh_key" >> ansible_hosts
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ssh_key
-          chmod 600 ssh_key
+          echo "${{ steps.get_ip.outputs.instance_ip }} ansible_user=ubuntu" >> ansible_hosts
 
       - name: Executar playbook do Ansible
-        run: ansible-playbook -i ansible_hosts playbook.yml
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ steps.get_ip.outputs.instance_ip }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            ansible-playbook -i ansible_hosts playbook.yml
