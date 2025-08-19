@@ -1,5 +1,5 @@
 ---
-- name: Instalar e configurar K3s 
+- name: Instalar e configurar K3s (Ubuntu 24)
   hosts: k3s_servers
   become: yes
 
@@ -17,18 +17,22 @@
           - ca-certificates
           - software-properties-common
           - ufw
+          - conntrack
+          - ipset
+          - iptables
         state: present
 
-    - name: Habilitar e configurar firewall (UFW)
+    - name: Configurar firewall (UFW)
       ufw:
         rule: allow
         port: "{{ item }}"
       loop:
-        - 22     # SSH
-        - 6443   # Kubernetes API
-        - 80     # HTTP
-        - 443    # HTTPS
-        - 10250  # Kubelet
+        - 22       # SSH
+        - 6443     # Kubernetes API
+        - 80       # HTTP
+        - 443      # HTTPS
+        - 10250    # Kubelet
+        - 30000:32767 # NodePort services
       notify:
         - Enable UFW
 
