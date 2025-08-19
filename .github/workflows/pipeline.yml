@@ -1,4 +1,4 @@
-name: Terraform CI/CD
+name: Terraform + Ansible CI/CD
 
 on:
   push:
@@ -7,13 +7,14 @@ on:
   workflow_dispatch:
 
 jobs:
-  terraform:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout do repositório
         uses: actions/checkout@v3
 
+      # 1️⃣ Rodar Terraform
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -24,19 +25,32 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: eu-north-1 
+          aws-region: eu-north-1
 
       - name: Terraform Init
         run: |
           cd terraform
           terraform init
 
-      - name: Terraform Plan
-        run: |
-          cd terraform
-          terraform plan -out=tfplan
-
       - name: Terraform Apply
         run: |
           cd terraform
-          terraform apply -auto-approve tfplan
+          terraform apply -auto-approve
+
+      - name: Obter IP da EC2
+        id: ec2
+        run: |
+          cd terraform
+          echo "EC2_PUBLIC_IP=$(terraform output -raw ec2_public_ip)" >> $GITHUB_ENV
+
+      # 2️⃣ Rodar Ansible
+      - name: Instalar Ansible
+        run: sudo apt-get update && sudo apt-get install -y ansible
+
+      - name: Configurar inventário dinâmico
+        run: |
+          echo "[k3s_servers]" > ansible/hosts.ini
+          echo "ec2_k3s ansible_host=${EC2_PUBLIC_IP} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/my-key.pem" >> ansible/hosts.ini
+
+      - name: Rodar playbook K3s
+        run: ansible-playbook -i ansible/hosts.ini ansible/install_k3s.yml
