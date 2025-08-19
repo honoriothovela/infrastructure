@@ -27,49 +27,56 @@ jobs:
           aws-region: eu-north-1
 
       - name: Terraform Init
-        id: init
         run: |
           cd terraform
           terraform init
 
       - name: Terraform Plan
-        id: plan
         run: |
           cd terraform
           terraform plan -out=tfplan
 
       - name: Terraform Apply
-        id: apply
         run: |
           cd terraform
           terraform apply -auto-approve tfplan
 
-      - name: Obter IP da instância
+      - name: Obter IP da instância CORRETAMENTE
         id: get_ip
         run: |
           cd terraform
-          # Pega o valor do output e remove qualquer caractere especial
-          INSTANCE_IP=$(terraform output -raw ec2_public_ip | tr -d '[:space:]' | tr -d '[:punct:]')
-          echo "IP limpo: $INSTANCE_IP"
-          echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
+          # Executa o comando e captura apenas a última linha (onde está o IP)
+          INSTANCE_IP=$(terraform output -raw ec2_public_ip 2>&1 | tail -1)
+          # Remove qualquer caractere não numérico ou ponto
+          CLEAN_IP=$(echo "$INSTANCE_IP" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          
+          echo "Output completo: $INSTANCE_IP"
+          echo "IP extraído: $CLEAN_IP"
+          
+          if [ -z "$CLEAN_IP" ]; then
+            echo "ERRO: Não foi possível extrair o IP do output"
+            exit 1
+          fi
+          
+          echo "instance_ip=$CLEAN_IP" >> $GITHUB_OUTPUT
+
+      - name: Debug - Verificar IP
+        run: |
+          echo "IP capturado: ${{ steps.get_ip.outputs.instance_ip }}"
 
       - name: Aguardar instância ficar disponível via SSH
         run: |
           IP="${{ steps.get_ip.outputs.instance_ip }}"
           echo "Aguardando SSH em $IP..."
-          timeout 300 bash -c 'until nc -z $0 22; do sleep 2; done' $IP || exit 1
+          timeout 180 bash -c 'until nc -z $0 22; do sleep 5; echo "Tentando conectar..."; done' $IP
 
       - name: Criar inventário do Ansible
         run: |
           IP="${{ steps.get_ip.outputs.instance_ip }}"
           echo "[k3s_node]" > ansible_hosts
-          echo "$IP ansible_user=ubuntu ansible_ssh_private_key_file=./key.pem" >> ansible_hosts
+          echo "$IP ansible_user=ubuntu" >> ansible_hosts
+          echo "Conteúdo do ansible_hosts:"
           cat ansible_hosts
-
-      - name: Salvar chave SSH temporariamente
-        run: |
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > key.pem
-          chmod 600 key.pem
 
       - name: Executar playbook do Ansible
         uses: appleboy/ssh-action@v0.1.10
@@ -78,10 +85,9 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd /github/workspace
-            ansible-playbook -i ansible_hosts playbook.yml
+            ansible-playbook -i /github/workspace/ansible_hosts /github/workspace/playbook.yml
 
-      - name: Limpar chave SSH
+      - name: Limpeza (opcional)
         if: always()
         run: |
-          rm -f key.pem
+          echo "Limpeza concluída"
