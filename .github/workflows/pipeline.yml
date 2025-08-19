@@ -46,36 +46,49 @@ jobs:
           cd terraform
           terraform apply -auto-approve -input=false tfplan
 
-      - name: Obter IP da instância
+      - name: Obter IP da instância (FILTRAR APENAS O NÚMERO)
         id: get_ip
         run: |
           cd terraform
-          # Método mais robusto para obter o IP
-          INSTANCE_IP=$(terraform output -raw ec2_public_ip 2>/dev/null || \
-            terraform output ec2_public_ip | tail -1 | tr -d '" ' | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+          # Executar comando e capturar TODO o output
+          RAW_OUTPUT=$(terraform output ec2_public_ip 2>&1)
+          echo "Output completo: $RAW_OUTPUT"
           
-          echo "IP obtido: '$INSTANCE_IP'"
+          # FILTRAR APENAS O IP (números e pontos)
+          INSTANCE_IP=$(echo "$RAW_OUTPUT" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          echo "IP filtrado: $INSTANCE_IP"
           
+          # Validar se é um IP válido
           if [[ $INSTANCE_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "✅ IP válido: $INSTANCE_IP"
             echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
           else
-            echo "ERRO: IP inválido - $INSTANCE_IP"
-            echo "Debug - output completo:"
-            terraform output ec2_public_ip
-            exit 1
+            echo "❌ ERRO: IP inválido - $INSTANCE_IP"
+            echo "Tentando método alternativo..."
+            
+            # Método alternativo: usar tail e tr
+            INSTANCE_IP_ALT=$(echo "$RAW_OUTPUT" | tail -1 | tr -d '" ' | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+')
+            echo "IP alternativo: $INSTANCE_IP_ALT"
+            
+            if [[ $INSTANCE_IP_ALT =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "instance_ip=$INSTANCE_IP_ALT" >> $GITHUB_OUTPUT
+            else
+              echo "❌ TODOS OS MÉTODOS FALHARAM"
+              exit 1
+            fi
           fi
 
-      - name: Debug - Verificar IP
+      - name: Verificar IP capturado
         run: |
-          echo "IP capturado: ${{ steps.get_ip.outputs.instance_ip }}"
+          echo "✅ IP capturado: ${{ steps.get_ip.outputs.instance_ip }}"
 
       - name: Aguardar instância ficar disponível
         run: |
           IP="${{ steps.get_ip.outputs.instance_ip }}"
-          echo "Aguardando SSH em $IP..."
+          echo "🕐 Aguardando SSH em $IP..."
           for i in {1..30}; do
             if nc -z -w 5 $IP 22; then
-              echo "SSH disponível!"
+              echo "✅ SSH disponível!"
               break
             fi
             echo "Tentativa $i/30 - aguardando..."
@@ -92,7 +105,7 @@ jobs:
           IP="${{ steps.get_ip.outputs.instance_ip }}"
           echo "[k3s_node]" > ansible_hosts
           echo "$IP ansible_user=ubuntu ansible_ssh_private_key_file=./key.pem" >> ansible_hosts
-          echo "Conteúdo do inventário:"
+          echo "📋 Conteúdo do inventário:"
           cat ansible_hosts
 
       - name: Executar playbook Ansible
@@ -106,7 +119,8 @@ jobs:
             sudo apt-get install -y python3
             ansible-playbook -i /github/workspace/ansible_hosts /github/workspace/playbook.yml
 
-      - name: Limpeza
+      - name: Limpeza final
         if: always()
         run: |
           rm -f key.pem ansible_hosts
+          echo "🧹 Limpeza concluída"
