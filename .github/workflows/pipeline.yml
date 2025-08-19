@@ -11,15 +11,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1️⃣ Checkout do repositório
       - name: Checkout do repositório
         uses: actions/checkout@v3
 
-      # 1️⃣ Rodar Terraform
+      # 2️⃣ Configurar Terraform
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.6.0
 
+      # 3️⃣ Configurar credenciais AWS
       - name: Configurar credenciais AWS
         uses: aws-actions/configure-aws-credentials@v2
         with:
@@ -27,6 +29,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: eu-north-1
 
+      # 4️⃣ Terraform Init & Apply
       - name: Terraform Init
         run: |
           cd terraform
@@ -37,20 +40,31 @@ jobs:
           cd terraform
           terraform apply -auto-approve
 
+      # 5️⃣ Obter IP público da EC2
       - name: Obter IP da EC2
         id: ec2
         run: |
           cd terraform
-          echo "EC2_PUBLIC_IP=$(terraform output -raw ec2_public_ip)" >> $GITHUB_ENV
+          EC2_PUBLIC_IP=$(terraform output -json ec2_public_ip | jq -r '.')
+          echo "EC2_PUBLIC_IP=$EC2_PUBLIC_IP" >> $GITHUB_ENV
 
-      # 2️⃣ Rodar Ansible
+      # 6️⃣ Criar chave SSH
+      - name: Criar arquivo da chave SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.AWS_SSH_PRIVATE_KEY }}" > ~/.ssh/my-key.pem
+          chmod 600 ~/.ssh/my-key.pem
+
+      # 7️⃣ Instalar Ansible e jq
       - name: Instalar Ansible
-        run: sudo apt-get update && sudo apt-get install -y ansible
+        run: sudo apt-get update && sudo apt-get install -y ansible jq
 
-      - name: Configurar inventário dinâmico
+      # 8️⃣ Criar inventário Ansible dinâmico
+      - name: Configurar inventário Ansible
         run: |
           echo "[k3s_servers]" > ansible/hosts.ini
           echo "ec2_k3s ansible_host=${EC2_PUBLIC_IP} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/my-key.pem" >> ansible/hosts.ini
 
+      # 9️⃣ Rodar playbook Ansible para instalar K3s
       - name: Rodar playbook K3s
         run: ansible-playbook -i ansible/hosts.ini ansible/install_k3s.yml
