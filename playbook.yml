@@ -1,46 +1,26 @@
 ---
-- name: Instalar e configurar k3s
-  hosts: all
+- name: Instalar k3s
+  hosts: k3s_node
   become: yes
-  gather_facts: no  # Importante: desativar até ter Python
-
-  pre_tasks:
-    - name: Instalar Python3 (necessário para Ansible)
-      apt:
-        name: python3
-        state: present
-      when: ansible_os_family == 'Debian'
-
-    - name: Configurar facts do Ansible
-      setup:
 
   tasks:
-    - name: Atualizar pacotes do sistema
+    - name: Atualizar sistema
       apt:
         update_cache: yes
         upgrade: dist-upgrade
-        cache_valid_time: 3600
 
-    - name: Instalar dependências
+    - name: Instalar curl
       apt:
-        name:
-          - curl
-          - wget
-          - tar
+        name: curl
         state: present
 
-    - name: Baixar o script de instalação do k3s
-      get_url:
-        url: https://get.k3s.io
-        dest: /tmp/install-k3s.sh
-        mode: '0755'
-
-    - name: Instalar o k3s
-      command: /tmp/install-k3s.sh
+    - name: Instalar k3s (método oficial)
+      shell: |
+        curl -sfL https://get.k3s.io | sh -
       args:
         creates: /usr/local/bin/k3s
 
-    - name: Verificar status do k3s
+    - name: Habilitar e iniciar serviço k3s
       systemd:
         name: k3s
         state: started
@@ -48,9 +28,9 @@
 
     - name: Verificar instalação
       command: k3s --version
-      register: k3s_version
+      register: k3s_result
       changed_when: false
 
-    - name: Mostrar versão do k3s
+    - name: Mostrar resultado
       debug:
-        msg: "K3s instalado: {{ k3s_version.stdout }}"
+        msg: "K3s {{ k3s_result.stdout }} instalado com sucesso!"

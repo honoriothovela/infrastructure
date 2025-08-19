@@ -127,7 +127,7 @@ jobs:
             
             # Executar o playbook
             echo "🚀 Executando playbook..."
-            ansible-playbook -i /github/workspace/ansible_hosts /github/workspace/playbook.yml
+            ansible-playbook -i /github/workspace/ansible_hosts /tmp/k3s_install.yml
 
       - name: Limpeza final
         if: always()
