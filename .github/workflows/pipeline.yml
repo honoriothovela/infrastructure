@@ -40,7 +40,7 @@ jobs:
           cd terraform
           terraform apply -auto-approve
 
-      # 5️⃣ Obter IP público da EC2 de forma segura
+      # 5️⃣ Obter IP público da EC2
       - name: Obter IP da EC2
         id: ec2
         run: |
