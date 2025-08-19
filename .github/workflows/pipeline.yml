@@ -108,29 +108,17 @@ jobs:
           echo "📋 Conteúdo do inventário:"
           cat ansible_hosts
 
-      - name: Executar playbook Ansible (COM INSTALAÇÃO DO ANSIBLE)
-        uses: appleboy/ssh-action@v0.1.10
+      - name: Executar playbook Ansible (CORRIGIDO)
+        uses: dawidd6/action-ansible-playbook@v2.10.1
         with:
-          host: ${{ steps.get_ip.outputs.instance_ip }}
-          username: ubuntu
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            # INSTALAR ANSIBLE NA INSTÂNCIA EC2
-            sudo apt-get update
-            sudo apt-get install -y software-properties-common
-            sudo apt-add-repository --yes --update ppa:ansible/ansible
-            sudo apt-get install -y ansible
-            
-            # Verificar se o Ansible foi instalado corretamente
-            echo "📦 Versão do Ansible instalada:"
-            ansible --version
-            
-            # Executar o playbook
-            echo "🚀 Executando playbook..."
-            ansible-playbook -i /github/workspace/ansible_hosts /tmp/k3s_install.yml
+          playbook: ./ansible/k3s_install.yml
+          inventory: ./ansible_hosts
+          private_key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Limpeza final
         if: always()
         run: |
           rm -f key.pem ansible_hosts
           echo "🧹 Limpeza concluída"
+
+      
