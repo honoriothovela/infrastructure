@@ -1,0 +1,30 @@
+---
+- name: Instalar K3s
+  hosts: k3s_node
+  become: yes
+  vars:
+    k3s_version: "v1.27.4+k3s1"
+
+  tasks:
+    - name: Baixar o script de instalação do K3s
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /tmp/k3s-install.sh
+        mode: '0755'
+
+    - name: Executar o script de instalação do K3s
+      ansible.builtin.shell:
+        cmd: /tmp/k3s-install.sh --version {{ k3s_version }}
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Verificar o status do serviço K3s
+      ansible.builtin.systemd:
+        name: k3s
+        state: started
+        enabled: yes
+      register: k3s_service_status
+
+    - name: Mostrar status do serviço K3s
+      ansible.builtin.debug:
+        var: k3s_service_status
