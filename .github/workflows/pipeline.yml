@@ -108,6 +108,15 @@ jobs:
           echo "📋 Conteúdo do inventário:"
           cat ansible_hosts
 
+      - name: Copiar playbook para a instância
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ steps.get_ip.outputs.instance_ip }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "./ansible/k3s_install.yml"
+          target: "/tmp"
+      
       - name: Executar playbook Ansible (COM INSTALAÇÃO DO ANSIBLE)
         uses: appleboy/ssh-action@v0.1.10
         with:
