@@ -48,8 +48,8 @@ jobs:
         id: get_ip
         run: |
           cd terraform
-          # Pega o valor do output 'ec2_public_ip' do seu main.tf
-          INSTANCE_IP=$(terraform output -raw ec2_public_ip)
+          # Pega o valor do output e remove qualquer quebra de linha ou espaço em branco
+          INSTANCE_IP=$(terraform output -raw ec2_public_ip | tr -d '[:space:]')
           echo "instance_ip=$INSTANCE_IP" >> $GITHUB_OUTPUT
 
       - name: Criar inventário do Ansible
