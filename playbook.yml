@@ -47,46 +47,52 @@
         path: /home/ubuntu/manifests
         state: directory
 
-    - name: Criar manifest do app
-      copy:
-        dest: /home/ubuntu/manifests/app-deployment.yml
-        content: |
-          apiVersion: apps/v1
-          kind: Deployment
-          metadata:
-            name: minha-app
-          spec:
-            replicas: 1
-            selector:
-              matchLabels:
-                app: minha-app
-            template:
-              metadata:
-                labels:
-                  app: minha-app
-              spec:
-                containers:
-                  - name: minha-app
-                    image: {{ app_image }}
-                    imagePullPolicy: Always
-                    ports:
-                      - containerPort: 8080
-          ---
-          apiVersion: v1
-          kind: Service
-          metadata:
-            name: minha-app-service
-          spec:
-            selector:
-              app: minha-app
-            type: NodePort
-            ports:
-              - protocol: TCP
-                port: 80
-                targetPort: 8080
+    - name: Criar diretório de manifests
+  file:
+    path: /home/ubuntu/manifests
+    state: directory
 
-    - name: Aplicar deployment no K3s
-      command: k3s kubectl apply -f /home/ubuntu/manifests/app-deployment.yml
+- name: Criar manifest do app
+  copy:
+    dest: /home/ubuntu/manifests/app-deployment.yml
+    content: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: minha-app
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: minha-app
+        template:
+          metadata:
+            labels:
+              app: minha-app
+          spec:
+            containers:
+              - name: minha-app
+                image: {{ dockerhub_user }}/minha-app:latest
+                imagePullPolicy: Always
+                ports:
+                  - containerPort: 8080
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: minha-app-service
+      spec:
+        selector:
+          app: minha-app
+        type: NodePort
+        ports:
+          - protocol: TCP
+            port: 80
+            targetPort: 8080
+
+- name: Aplicar deployment no K3s
+  command: k3s kubectl apply -f /home/ubuntu/manifests/app-deployment.yml
+
 
     - name: Mostrar pods do cluster
       command: k3s kubectl get pods
