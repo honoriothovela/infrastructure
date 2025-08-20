@@ -164,11 +164,12 @@ EOF
           IP="${{ steps.get_ip.outputs.instance_ip }}"
           ssh-keyscan -H $IP >> ~/.ssh/known_hosts
 
-      - name: Executar playbook Ansible diretamente no executorr
+      
+      - name: Executar playbook Ansible diretamente no executor
         run: |
+          export dockerhub_user=${{ secrets.DOCKERHUB_USERNAME }}
           ansible-playbook -i ansible_hosts playbook.yml --private-key=key.pem
-          echo "✅ Playbook executado com sucesso!"
-
+           echo "✅ Playbook executado com sucesso!"
       - name: Limpezaa
         if: always()
         run: |
