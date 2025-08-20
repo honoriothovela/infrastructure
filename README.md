@@ -11,7 +11,7 @@ As ferramentas utilizadas incluem:
 - **Terraform:** Para provisionar a instância EC2.
 - **Ansible:** Para configurar a instância EC2.
 - **Docker:** Para conteinerizar a aplicação Go.
-- **k3s:** Uma distribuição leve do Kubernetes, para rodar os containers.  
+- **k3s:** Uma distribuição leve do Kubernetes, para rodar os containers. 
   **Atenção por favor ao último ponto do README**
 - **Go:** Para a aplicação backend.
 
@@ -36,19 +36,20 @@ No entanto, a instalação da máquina e do Docker foi concluída com sucesso us
 
 A aplicação Go foi desenvolvida para expor um endpoint RESTful que aceita uma frase e retorna o número de palavras, vogais e consoantes.
 
-A API foi documentada usando a especificação OpenAPI (OAS).
 
 Um Dockerfile foi criado para conteinerizar a aplicação Go.
 
 A imagem Docker foi construída e enviada para um registro Docker.
 
-A implantação do container no cluster k3s foi automatizada.
+A implantação do container no cluster k3s foi automatizada ja dentro da maquina manualmente, nao tive sucesso.
 
 ## 5. Validação da Implantação
 
 A funcionalidade do serviço foi validada usando `curl` para invocar o endpoint.
 
 ## 6. Dificuldades Encontradas
+
+A implantação do container no cluster k3s foi tentada via automação, mas não obtive sucesso. No entanto, a implantação foi realizada manualmente dentro da máquina, garantindo que o serviço estivesse funcional.
 
 A principal dificuldade encontrada foi a instalação do k3s na instância EC2 através do Ansible.  
 Apesar de várias tentativas, a automação completa desta etapa não foi bem-sucedida.
