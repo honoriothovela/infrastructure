@@ -14,6 +14,20 @@ jobs:
       - name: Checkout do repositório
         uses: actions/checkout@v3
 
+      # 🔑 Login no DockerHub
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 🐳 Build e Push da imagem Go para o DockerHub
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/minha-app:latest
+
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -152,7 +166,6 @@ EOF
 
       - name: Executar playbook Ansible diretamente no executor
         run: |
-          # Executar ansible-playbook diretamente do executor do GitHub
           ansible-playbook -i ansible_hosts playbook.yml --private-key=key.pem
           echo "✅ Playbook executado com sucesso!"
 
