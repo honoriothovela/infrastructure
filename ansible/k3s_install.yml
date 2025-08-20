@@ -1,30 +1,113 @@
 ---
-- name: Instalar K3s
+- name: Instalar k3s e deploy do app
   hosts: k3s_node
   become: yes
+
   vars:
-    k3s_version: "v1.27.4+k3s1"
+    dockerhub_user: "{{ lookup('env','DOCKERHUB_USERNAME') }}"
+    app_image: "{{ dockerhub_user }}/minha-app:latest"
 
   tasks:
-    - name: Baixar o script de instalação do K3s
-      ansible.builtin.get_url:
-        url: https://get.k3s.io
-        dest: /tmp/k3s-install.sh
-        mode: '0755'
+    - name: Atualizar sistema
+      apt:
+        update_cache: yes
+        upgrade: dist-upgrade
 
-    - name: Executar o script de instalação do K3s
-      ansible.builtin.shell:
-        cmd: /tmp/k3s-install.sh --version {{ k3s_version }}
+    - name: Instalar curl
+      apt:
+        name: curl
+        state: present
+
+    - name: Instalar k3s (método oficial)
+      shell: |
+        curl -sfL https://get.k3s.io | sh -
       args:
         creates: /usr/local/bin/k3s
 
-    - name: Verificar o status do serviço K3s
-      ansible.builtin.systemd:
+    - name: Habilitar e iniciar serviço k3s
+      systemd:
         name: k3s
         state: started
         enabled: yes
-      register: k3s_service_status
 
-    - name: Mostrar status do serviço K3s
-      ansible.builtin.debug:
-        var: k3s_service_status
+    - name: Verificar instalação
+      command: k3s --version
+      register: k3s_result
+      changed_when: false
+
+    - name: Mostrar resultado
+      debug:
+        msg: "K3s {{ k3s_result.stdout }} instalado com sucesso!"
+
+    # -----------------------------------------
+    # Deploy do container Docker no K3s
+    # -----------------------------------------
+    - name: Criar diretório de manifests
+      file:
+        path: /home/ubuntu/manifests
+        state: directory
+
+    - name: Criar diretório de manifests
+  file:
+    path: /home/ubuntu/manifests
+    state: directory
+
+- name: Criar manifest do app
+  copy:
+    dest: /home/ubuntu/manifests/app-deployment.yml
+    content: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: minha-app
+      spec:
+        replicas: 1
+        selector:
+          matchLabels:
+            app: minha-app
+        template:
+          metadata:
+            labels:
+              app: minha-app
+          spec:
+            containers:
+              - name: minha-app
+                image: {{ dockerhub_user }}/minha-app:latest
+                imagePullPolicy: Always
+                ports:
+                  - containerPort: 8080
+      ---
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: minha-app-service
+      spec:
+        selector:
+          app: minha-app
+        type: NodePort
+        ports:
+          - protocol: TCP
+            port: 80
+            targetPort: 8080
+
+- name: Aplicar deployment no K3s
+  command: k3s kubectl apply -f /home/ubuntu/manifests/app-deployment.yml
+
+
+    - name: Mostrar pods do cluster
+      command: k3s kubectl get pods
+      register: pods
+      changed_when: false
+
+    - name: Exibir pods
+      debug:
+        var: pods.stdout_lines
+
+    - name: Mostrar serviços do cluster
+      command: k3s kubectl get svc
+      register: svcs
+      changed_when: false
+
+    - name: Exibir serviços
+      debug:
+        var: svcs.stdout_lines
