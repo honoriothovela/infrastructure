@@ -147,7 +147,7 @@ jobs:
         msg: "Nodes do cluster: {{ k3s_nodes.stdout }}"
 EOF
 
-          echo "📋 Playbook criado:"
+          echo "📋 Playbook criadoo:"
           cat playbook.yml
 
       - name: Instalar Ansible no executor do GitHub
@@ -164,12 +164,12 @@ EOF
           IP="${{ steps.get_ip.outputs.instance_ip }}"
           ssh-keyscan -H $IP >> ~/.ssh/known_hosts
 
-      - name: Executar playbook Ansible diretamente no executor
+      - name: Executar playbook Ansible diretamente no executorr
         run: |
           ansible-playbook -i ansible_hosts playbook.yml --private-key=key.pem
           echo "✅ Playbook executado com sucesso!"
 
-      - name: Limpeza
+      - name: Limpezaa
         if: always()
         run: |
           rm -f key.pem ansible_hosts playbook.yml
