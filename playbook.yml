@@ -88,21 +88,20 @@
     - name: Aplicar deployment no K3s
       command: k3s kubectl apply -f /home/ubuntu/manifests/app-deployment.yml
 
-      - name: Mostrar pods do cluster
-  command: k3s kubectl get pods
-  register: pods
-  changed_when: false
+    - name: Mostrar pods do cluster
+      command: k3s kubectl get pods
+      register: pods
+      changed_when: false
 
-- name: Exibir pods
-  debug:
-    var: pods.stdout_lines
+    - name: Exibir pods
+      debug:
+        var: pods.stdout_lines
 
-- name: Mostrar serviços do cluster
-  command: k3s kubectl get svc
-  register: svcs
-  changed_when: false
+    - name: Mostrar serviços do cluster
+      command: k3s kubectl get svc
+      register: svcs
+      changed_when: false
 
-- name: Exibir serviços
-  debug:
-    var: svcs.stdout_lines
-
+    - name: Exibir serviços
+      debug:
+        var: svcs.stdout_lines
